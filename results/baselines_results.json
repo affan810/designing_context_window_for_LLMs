@@ -1,0 +1,92 @@
+[
+  {
+    "timestamp": "2026-04-09T16:23:07.439488",
+    "method": "full_context",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 197,
+    "efficiency": 0.0041990860812646654,
+    "mode": "full",
+    "exact_match": 0.0,
+    "f1": 0.2844808841937603
+  },
+  {
+    "timestamp": "2026-04-09T16:24:11.321842",
+    "method": "truncated_head",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 179,
+    "efficiency": 0.004623334239869458,
+    "mode": "head",
+    "max_chunks": 3,
+    "exact_match": 0.0,
+    "f1": 0.27776187490495746
+  },
+  {
+    "timestamp": "2026-04-09T16:25:15.718139",
+    "method": "truncated_tail",
+    "accuracy": 0.7073170731707317,
+    "tokens_used": 151,
+    "efficiency": 0.004654895666131621,
+    "mode": "tail",
+    "max_chunks": 3,
+    "exact_match": 0.0,
+    "f1": 0.23522726377905764
+  },
+  {
+    "timestamp": "2026-04-09T16:26:19.618707",
+    "method": "truncated_head_tail",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 197,
+    "efficiency": 0.0041990860812646654,
+    "mode": "head_tail",
+    "max_chunks": 4,
+    "exact_match": 0.0,
+    "f1": 0.2844808841937603
+  },
+  {
+    "timestamp": "2026-04-09T16:27:25.584723",
+    "method": "topk",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 166,
+    "efficiency": 0.00499412455934195,
+    "k": 3,
+    "alpha": 1.0,
+    "variant": "semantic",
+    "exact_match": 0.0,
+    "f1": 0.27028850873932353
+  },
+  {
+    "timestamp": "2026-04-09T16:28:28.626885",
+    "method": "topk",
+    "accuracy": 0.8048780487804879,
+    "tokens_used": 166,
+    "efficiency": 0.004822446295484437,
+    "k": 3,
+    "alpha": 0.5,
+    "variant": "hybrid",
+    "exact_match": 0.0,
+    "f1": 0.2699821163455108
+  },
+  {
+    "timestamp": "2026-04-09T16:29:31.868323",
+    "method": "sliding_window",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 179,
+    "efficiency": 0.004609544468546637,
+    "window_size": 3,
+    "stride": 1,
+    "top_n": 2,
+    "exact_match": 0.0,
+    "f1": 0.2820878402458383
+  },
+  {
+    "timestamp": "2026-04-09T16:30:34.747236",
+    "method": "keyword",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 188,
+    "efficiency": 0.004388795662837227,
+    "num_keywords": 10,
+    "neighbor_chunks": 1,
+    "exact_match": 0.0,
+    "f1": 0.28464680422030747
+  }
+]

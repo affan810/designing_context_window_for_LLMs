@@ -1,0 +1,44 @@
+# Experiment Configuration
+
+model:
+  tinyllama_model_id: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+  max_new_tokens: 64
+  use_fp16: true          # use float16 on MPS/CUDA, float32 on CPU
+
+embeddings:
+  model_id: "sentence-transformers/all-MiniLM-L6-v2"
+  cache_dir: "data/processed/embedding_cache"
+
+chunking:
+  chunk_size: 50          # tokens per chunk (small = more chunks = more selector differentiation)
+  overlap: 10             # overlapping tokens between chunks
+
+selectors:
+  topk:
+    k: 3
+    alpha: 0.5            # hybrid weight (embedding vs keyword)
+  sliding_window:
+    window_size: 3        # chunks per window
+    stride: 1
+    top_n: 2              # top windows to keep
+  keyword:
+    num_keywords: 10
+    neighbor_sentences: 1
+
+rl:
+  lambda_penalty: 0.001   # token count penalty weight
+  epsilon: 0.3            # initial exploration rate
+  epsilon_decay: 0.99
+  epsilon_min: 0.05
+  learning_rate: 0.01
+  max_chunks: 5           # max chunks the RL agent can select
+  num_episodes: 200
+  gamma: 0.95
+
+evaluation:
+  results_dir: "results"
+  save_plots: true
+
+data:
+  dataset_path: "data/processed/dataset.json"
+  raw_stories_dir: "data/raw_stories"

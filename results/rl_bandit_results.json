@@ -1,0 +1,14 @@
+[
+  {
+    "timestamp": "2026-04-09T16:31:58.163236",
+    "method": "rl_bandit",
+    "accuracy": 0.8292682926829268,
+    "tokens_used": 197,
+    "efficiency": 0.0041990860812646654,
+    "episodes": 200,
+    "lambda": 0.001,
+    "max_chunks": 5,
+    "exact_match": 0.0,
+    "f1": 0.2844808841937603
+  }
+]

@@ -1,0 +1,2 @@
+timestamp,method,accuracy,tokens_used,efficiency,episodes,lambda,max_chunks,exact_match,f1
+2026-04-09T16:31:58.163236,rl_bandit,0.8292682926829268,197,0.0041990860812646654,200,0.001,5,0.0,0.2844808841937603
