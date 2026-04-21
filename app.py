@@ -481,6 +481,8 @@ with tab4:
         if uploaded_file is not None:
             try:
                 dataset = json.load(uploaded_file)
+                if isinstance(dataset, dict):
+                    dataset = [dataset]
                 st.dataframe(pd.DataFrame([{"Story Preview": d.get("story", "")[:50]+"...", "Questions": len(d.get("qa_pairs", []))} for d in dataset[:3]]))
             except Exception as e:
                 st.error("Invalid JSON format.")
@@ -521,8 +523,8 @@ with tab4:
 
     st.subheader("Step 3 — Train the RL agent")
     if st.button("Start RL Training", type="primary"):
-        if not dataset or (len(dataset) < 2 and dataset_option != "Use current story from Live Demo tab"):
-            st.error("Need at least 2 stories for meaningful cross-story consistency (unless testing single story).")
+        if not dataset:
+            st.error("No dataset provided to start RL training.")
         elif st.session_state['training_in_progress']:
             st.warning("Training is already running. Please wait for it to finish.")
             st.stop()
