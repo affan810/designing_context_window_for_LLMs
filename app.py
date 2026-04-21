@@ -4,6 +4,7 @@ import streamlit as st
 import yaml
 import json
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import glob
 import shutil
@@ -144,7 +145,9 @@ with st.sidebar:
 
 st.title("Context Compression for TinyLlama")
 
-tab1, tab2, tab3 = st.tabs(["⚡ Live Demo", "📊 Method Comparison", "🧠 RL Training Monitor"])
+#tab1, tab2, tab3, tab4 = st.tabs(["⚡ Live Demo", "📊 Method Comparison", "🧠 RL Training Monitor", "📈 RL Selector Advisor"])
+tab1, tab2, tab4 = st.tabs(["⚡ Live Demo", "📊 Method Comparison", "📈 RL Selector Advisor"])
+
 
 # ================= TAB 1: LIVE DEMO =================
 with tab1:
@@ -371,55 +374,327 @@ with tab2:
 
 
 # ================= TAB 3: RL TRAINING MONITOR =================
-with tab3:
-    st.markdown("Monitor or launch reinforcement learning loops to train the context-selection agent.")
+# with tab3:
+#     st.markdown("Monitor or launch reinforcement learning loops to train the context-selection agent.")
     
-    uploaded_rl = st.file_uploader("Upload rl_bandit_results.json or rl_pg_results.json", type=['json'])
+#     uploaded_rl = st.file_uploader("Upload rl_bandit_results.json or rl_pg_results.json", type=['json'])
     
-    if uploaded_rl is not None:
-        rl_data = json.load(uploaded_rl)
-        st.success("Loaded RL results successfully!")
+#     if uploaded_rl is not None:
+#         rl_data = json.load(uploaded_rl)
+#         st.success("Loaded RL results successfully!")
         
-        mc1, mc2, mc3, mc4 = st.columns(4)
-        mc1.metric("Final Accuracy", f"{rl_data.get('final_accuracy', 0):.2f}")
-        mc2.metric("Tokens Built", rl_data.get('avg_tokens', 0))
-        mc3.metric("Efficiency", f"{rl_data.get('efficiency', 0):.4f}")
-        mc4.metric("Episodes", rl_data.get('episodes', len(rl_data.get('reward_history', []))))
+#         mc1, mc2, mc3, mc4 = st.columns(4)
+#         mc1.metric("Final Accuracy", f"{rl_data.get('final_accuracy', 0):.2f}")
+#         mc2.metric("Tokens Built", rl_data.get('avg_tokens', 0))
+#         mc3.metric("Efficiency", f"{rl_data.get('efficiency', 0):.4f}")
+#         mc4.metric("Episodes", rl_data.get('episodes', len(rl_data.get('reward_history', []))))
         
-        if 'reward_history' in rl_data:
-            st.line_chart(rl_data['reward_history'])
+#         if 'reward_history' in rl_data:
+#             st.line_chart(rl_data['reward_history'])
+#         else:
+#             st.info("No detailed reward_history found in JSON. Simulated final metrics shown.")
+            
+#     st.divider()
+#     with st.expander("Run RL training live (Simulation)"):
+#         rc1, rc2 = st.columns(2)
+#         train_eps = rc1.slider("Episodes", 50, 500, 200)
+#         agent_type = rc2.selectbox("Agent Type", ["Epsilon-greedy bandit", "Policy gradient"])
+#         train_lambda = rc1.slider("Lambda penalty", 0.0001, 0.0100, 0.0010, step=0.0001)
+        
+#         if st.button("Start training", type="primary"):
+#             st.warning("Running the simulated visual training loop...")
+#             progress_bar = st.progress(0)
+#             chart_placeholder = st.empty()
+            
+#             # Simple simulation loop to populate UI as requested
+#             sim_rewards = []
+#             base_reward = 0.2
+#             for ep in range(train_eps):
+#                 # Simulated learning curve
+#                 if agent_type == "Policy gradient":
+#                     inc = (0.8 - base_reward) * (ep / train_eps) ** 2
+#                 else:
+#                     inc = (0.7 - base_reward) * (ep / train_eps) ** 0.8
+                
+#                 noise = (int(ep * 100) % 15) / 100.0 - 0.07
+#                 sim_rewards.append(base_reward + inc + noise)
+                
+#                 progress_bar.progress((ep + 1) / train_eps)
+#                 if ep % 5 == 0:
+#                     chart_placeholder.line_chart(sim_rewards)
+            
+#             st.success("Training finalized!")
+#             st.metric("Final Simulated Reward", f"{sim_rewards[-1]:.3f}")
+#             st.session_state.training_rewards = sim_rewards
+
+# ================= TAB 4: RL SELECTOR ADVISOR =================
+from src.rl.selector_rl_agent import SelectorRLTrainer, SelectorBandit
+from datetime import datetime
+import time
+
+if 'rl_advisor_results' not in st.session_state:
+    st.session_state['rl_advisor_results'] = None
+if 'rl_advisor_agent' not in st.session_state:
+    st.session_state['rl_advisor_agent'] = None
+if 'rl_advisor_dataset' not in st.session_state:
+    st.session_state['rl_advisor_dataset'] = None
+if 'eval_cache' not in st.session_state:
+    st.session_state['eval_cache'] = {}
+if 'training_in_progress' not in st.session_state:
+    st.session_state['training_in_progress'] = False
+
+ARM_DISPLAY_NAMES = {
+    "topk_semantic": "Top-K Semantic",
+    "topk_hybrid": "Top-K Hybrid",
+    "keyword": "Keyword (TF-IDF)",
+    "sliding_window": "Sliding Window",
+    "truncated_head": "Truncated Head",
+    "truncated_tail": "Truncated Tail"
+}
+
+with tab4:
+    st.header("RL Selector Advisor")
+    
+    st.subheader("Step 1 — Choose your dataset")
+    dataset_option = st.radio(
+        "Select Dataset Source:",
+        ["Use built-in stories (dataset.json)", "Use current story from Live Demo tab", "Upload custom dataset (JSON)"]
+    )
+    
+    dataset = []
+    if dataset_option == "Use built-in stories (dataset.json)":
+        try:
+            with open("data/processed/dataset.json", "r") as f:
+                dataset = json.load(f)
+        except Exception as e:
+            st.error(f"Could not load dataset.json: {e}")
+    elif dataset_option == "Use current story from Live Demo tab":
+        # Pull from selected preset
+        stry = STORY_PRESETS.get(st.session_state.active_dataset, "")
+        qa = DEFAULT_QA.get(st.session_state.active_dataset, ("",""))
+        if stry:
+            dataset = [{"story": stry, "qa_pairs": [{"question": qa[0], "answer": qa[1]}]}]
         else:
-            st.info("No detailed reward_history found in JSON. Simulated final metrics shown.")
-            
-    st.divider()
-    with st.expander("Run RL training live (Simulation)"):
-        rc1, rc2 = st.columns(2)
-        train_eps = rc1.slider("Episodes", 50, 500, 200)
-        agent_type = rc2.selectbox("Agent Type", ["Epsilon-greedy bandit", "Policy gradient"])
-        train_lambda = rc1.slider("Lambda penalty", 0.0001, 0.0100, 0.0010, step=0.0001)
+            st.warning("Run the Live Demo tab first to set a story")
+    else:
+        uploaded_file = st.file_uploader("Choose a JSON file", type="json")
+        if uploaded_file is not None:
+            try:
+                dataset = json.load(uploaded_file)
+                st.dataframe(pd.DataFrame([{"Story Preview": d.get("story", "")[:50]+"...", "Questions": len(d.get("qa_pairs", []))} for d in dataset[:3]]))
+            except Exception as e:
+                st.error("Invalid JSON format.")
+
+    if dataset:
+        total_qa = sum(len(d.get("qa_pairs", [])) for d in dataset)
+        avg_len = np.mean([len(d.get("story", "").split()) * 1.3 for d in dataset]) if dataset else 0
+        samp_q = dataset[0].get("qa_pairs", [{}])[0].get("question", "") if dataset and dataset[0].get("qa_pairs") else ""
         
-        if st.button("Start training", type="primary"):
-            st.warning("Running the simulated visual training loop...")
-            progress_bar = st.progress(0)
-            chart_placeholder = st.empty()
+        st.info(f"Loaded {len(dataset)} stories with {total_qa} QA pairs. Avg story length: ~{avg_len:.0f} tokens. Sample Q: '{samp_q}'")
+
+    st.subheader("Step 2 — Configure RL training")
+    colA, colB = st.columns(2)
+    with colA:
+        episodes = st.slider("Number of episodes", 10, 100, 30, 5)
+        st.caption("Each episode = one full evaluation of one selector on your dataset")
+        budget = st.slider("Token budget", 50, 600, 200, 25)
+        st.caption("The context size limit the agent is optimizing for")
+        c_param = st.slider("UCB exploration constant (C)", 0.5, 3.0, 1.4, 0.1, format="%.1f")
+        st.caption("Higher = more exploration. Lower = exploit known good selectors faster")
+        fast_mode = st.checkbox("Fast mode (evaluate on 2 QA pairs per story instead of all)", value=False)
+        
+    with colB:
+        alpha = st.slider("Quality weight (α)", 0.1, 2.0, 1.0, 0.1)
+        st.caption("How much to reward answer quality")
+        beta_p = st.slider("Compression weight (β)", 0.0, 1.0, 0.3, 0.05)
+        st.caption("How much to penalize high token usage")
+        gamma_p = st.slider("Consistency weight (γ)", 0.0, 1.0, 0.2, 0.05)
+        st.caption("How much to reward stable performance across stories")
+        
+    st.divider()
+    st.latex(r"R = \alpha \cdot Q_{quality} - \beta \cdot r_{compression} + \gamma \cdot C_{consistency}")
+    st.caption(f"Currently: R = {alpha}·quality - {beta_p}·compression + {gamma_p}·consistency")
+
+    if dataset:
+        total_qa_run = sum(min(2, len(d.get("qa_pairs", []))) if fast_mode else len(d.get("qa_pairs", [])) for d in dataset)
+        st.warning(f"Estimated training time: ~{episodes * total_qa_run * 2}s ({episodes} episodes × {total_qa_run} QA pairs × ~2s each). Consider using 10–15 episodes for a quick demo.")
+
+    st.subheader("Step 3 — Train the RL agent")
+    if st.button("Start RL Training", type="primary"):
+        if not dataset or (len(dataset) < 2 and dataset_option != "Use current story from Live Demo tab"):
+            st.error("Need at least 2 stories for meaningful cross-story consistency (unless testing single story).")
+        elif st.session_state['training_in_progress']:
+            st.warning("Training is already running. Please wait for it to finish.")
+            st.stop()
+        else:
+            st.session_state['training_in_progress'] = True
             
-            # Simple simulation loop to populate UI as requested
-            sim_rewards = []
-            base_reward = 0.2
-            for ep in range(train_eps):
-                # Simulated learning curve
-                if agent_type == "Policy gradient":
-                    inc = (0.8 - base_reward) * (ep / train_eps) ** 2
-                else:
-                    inc = (0.7 - base_reward) * (ep / train_eps) ** 0.8
-                
-                noise = (int(ep * 100) % 15) / 100.0 - 0.07
-                sim_rewards.append(base_reward + inc + noise)
-                
-                progress_bar.progress((ep + 1) / train_eps)
-                if ep % 5 == 0:
-                    chart_placeholder.line_chart(sim_rewards)
+            prog_col = st.empty()
+            chart_col = st.empty()
+            bar_col = st.empty()
+            metric_col = st.empty()
             
-            st.success("Training finalized!")
-            st.metric("Final Simulated Reward", f"{sim_rewards[-1]:.3f}")
-            st.session_state.training_rewards = sim_rewards
+            # prepare dataset subset if fast mode
+            train_dataset = dataset
+            if fast_mode:
+                import copy
+                train_dataset = []
+                for item in dataset:
+                    item_copy = copy.deepcopy(item)
+                    item_copy["qa_pairs"] = item_copy.get("qa_pairs", [])[:2]
+                    train_dataset.append(item_copy)
+
+            trainer = SelectorRLTrainer(
+                dataset=train_dataset,
+                emb_model=emb_model,
+                llm=llm_model,
+                token_budget=budget,
+                chunk_size=cfg['chunking'].get('chunk_size', 50),
+                overlap=cfg['chunking'].get('overlap', 10),
+                n_episodes=episodes,
+                C=c_param, alpha=alpha, beta=beta_p, gamma=gamma_p
+            )
+
+            ep_rewards = []
+            best_so_far = []
+            arm_counts = {ARM_DISPLAY_NAMES[k]: 0 for k in trainer.agent.ARM_NAMES}
+
+            def on_progress(ep, arm_name, reward, details):
+                disp_name = ARM_DISPLAY_NAMES.get(arm_name, arm_name)
+                prog_col.progress(ep / episodes)
+                prog_col.caption(f"Episode {ep}/{episodes} — Currently evaluating: {disp_name}")
+                
+                ep_rewards.append(reward)
+                best_so_far.append(max(ep_rewards))
+                
+                chart_col.line_chart({"reward": ep_rewards, "best_so_far": best_so_far})
+                
+                arm_counts[disp_name] += 1
+                bar_pd = pd.DataFrame([{"Arm": k, "Count": v} for k, v in arm_counts.items()])
+                bar_col.bar_chart(bar_pd.set_index("Arm"))
+                
+                with metric_col.container():
+                    mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+                    mc1.metric("Current arm", disp_name)
+                    mc2.metric("Reward", f"{reward:.3f}")
+                    mc3.metric("Quality score", f"{details['quality_score']:.3f}")
+                    mc4.metric("Tokens used", f"{details['avg_tokens']:.0f}")
+                    mc5.metric("Compression %", f"{details['compression_ratio']*100:.1f}%")
+
+            try:
+                results = trainer.train(progress_callback=on_progress)
+                st.session_state['rl_advisor_results'] = results
+                st.session_state['rl_advisor_agent'] = trainer.agent
+                st.session_state['rl_advisor_dataset'] = train_dataset
+                st.success("Training completed!")
+            except Exception as e:
+                st.exception(e)
+            finally:
+                st.session_state['training_in_progress'] = False
+
+    if st.session_state['rl_advisor_results']:
+        st.subheader("Step 4 — RL Recommendation")
+        res = st.session_state['rl_advisor_results']
+        
+        best_disp = ARM_DISPLAY_NAMES.get(res['best_arm'], res['best_arm'])
+        conf = res.get('confidence', 0)
+        
+        if conf >= 0.3:
+            st.success(f"### Recommended selector: {best_disp}\n**Confidence:** {conf*100:.1f}%\n\n{res['recommendation']}")
+        else:
+            st.warning(f"### Recommended selector: {best_disp}\n**Confidence:** {conf*100:.1f}%\n\nMultiple selectors performed similarly. {res['recommendation']}")
+
+        st.subheader("Learned selector rankings")
+        qvals = res['q_values']
+        cnts = res['counts']
+        all_det = res['all_arm_details']
+        
+        board_data = []
+        for a_name, q in qvals.items():
+            dname = ARM_DISPLAY_NAMES.get(a_name, a_name)
+            det = all_det.get(a_name, {})
+            avg_r = det.get('reward', 0)
+            status = "Recommended" if a_name == res['best_arm'] else ("Competitive" if q > 0.8 * res['best_reward'] else "Viable")
+            board_data.append({"Selector": dname, "Q-Value": q, "Times Selected": cnts.get(a_name, 0), "Avg Reward": avg_r, "Status": status})
+        
+        df_board = pd.DataFrame(board_data).sort_values("Q-Value", ascending=False).reset_index(drop=True)
+        df_board.index += 1
+        st.dataframe(df_board.style.highlight_max(subset=['Q-Value'], color='lightgreen'))
+
+        st.subheader("UCB Learning Curves")
+        c1, c2 = st.columns(2)
+        with c1:
+            rh = res['reward_history']
+            if len(rh) > 0:
+                rh_df = pd.DataFrame(rh, columns=["Episode", "Reward", "Arm"])
+                rh_df["Arm"] = rh_df["Arm"].map(lambda x: ARM_DISPLAY_NAMES.get(x, x))
+                fig1 = px.line(rh_df, x="Episode", y="Reward", title="Reward signal over training", markers=True, color="Arm")
+                st.plotly_chart(fig1, use_container_width=True)
+        with c2:
+            hist = res["best_arm_history"]
+            if len(hist) > 0:
+                hist_df = pd.DataFrame([
+                    {"Episode": i + 1, "Arm": ARM_DISPLAY_NAMES.get(a, a), "Count": 1}
+                    for i, a in enumerate(hist)
+                ])
+                hist_df_grouped = hist_df.groupby(["Episode", "Arm"]).count().unstack(fill_value=0).cumsum()
+                hist_df_grouped.columns = hist_df_grouped.columns.droplevel()
+                hist_df_grouped = hist_df_grouped.reset_index().melt(id_vars=["Episode"], value_name="Cumulative Selections")
+                fig2 = px.area(hist_df_grouped, x="Episode", y="Cumulative Selections", color="Arm", title="Exploration vs exploitation")
+                st.plotly_chart(fig2, use_container_width=True)
+
+        st.subheader("Why this dataset favors that selector")
+        f_vec = res['feature_vector']
+        f_names = res['feature_names']
+        
+        f_df = pd.DataFrame({"Feature": f_names, "Value": f_vec})
+        f_max = f_df["Value"].max()
+        f_df["Normalized_Value"] = f_df["Value"] / (f_max if f_max > 0 else 1)
+        fig3 = px.bar(f_df, x="Normalized_Value", y="Feature", orientation='h', title="Dataset Features", hover_data=["Value"])
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        st.markdown("**Feature Intepretations:**")
+        feat_dict = dict(zip(f_names, f_vec))
+        if feat_dict['answer_position_bias'] > 0.6:
+            st.info(f"Feature 'answer_position_bias' = {feat_dict['answer_position_bias']:.3f} — answers tend to appear late in stories — favors sliding window or tail selectors")
+        elif feat_dict['answer_position_bias'] < 0.4:
+            st.info(f"Feature 'answer_position_bias' = {feat_dict['answer_position_bias']:.3f} — answers tend to appear early — favors head truncation or top-K selectors")
+            
+        if feat_dict['keyword_density'] > 0.5:
+            st.info(f"Feature 'keyword_density' = {feat_dict['keyword_density']:.3f} — questions share many words with stories — keyword selector will perform well")
+        elif feat_dict['keyword_density'] < 0.2:
+            st.info(f"Feature 'keyword_density' = {feat_dict['keyword_density']:.3f} — semantic gap between questions and stories — embedding-based selectors preferred")
+            
+        if feat_dict['semantic_spread'] > 0.3:
+            st.info(f"Feature 'semantic_spread' = {feat_dict['semantic_spread']:.3f} — story content is diverse — top-K semantic can discriminate well")
+            
+        if feat_dict['compression_pressure'] > 2.0:
+            st.info(f"Feature 'compression_pressure' = {feat_dict['compression_pressure']:.3f} — stories are much larger than budget — aggressive compression methods needed")
+            
+        if feat_dict['vocab_richness'] > 0.6:
+            st.info(f"Feature 'vocab_richness' = {feat_dict['vocab_richness']:.3f} — rich vocabulary — TF-IDF keyword selector may struggle")
+
+        st.subheader("Step 5 — Export results")
+        ex1, ex2, ex3 = st.columns(3)
+        with ex1:
+            js_res = json.dumps(res, indent=2)
+            st.download_button("Download recommendation report (JSON)", data=js_res.encode(), file_name=f"rl_advisor_{datetime.now().strftime('%Y%m%d_%H%M')}.json")
+        with ex2:
+            if st.button("Save agent to disk"):
+                import os
+                os.makedirs("results", exist_ok=True)
+                st.session_state['rl_advisor_agent'].save("results/selector_bandit.pkl")
+                st.success("Agent saved to results/selector_bandit.pkl")
+        with ex3:
+            up_agent = st.file_uploader("Load previous agent", type="pkl", key="agent_loader")
+            if up_agent:
+                try:
+                    loaded_agent = SelectorBandit()
+                    with open("temp_agent.pkl", "wb") as f:
+                        f.write(up_agent.read())
+                    loaded_agent.load("temp_agent.pkl")
+                    best_arm = loaded_agent.ARM_NAMES[int(np.argmax(loaded_agent.q_values))]
+                    st.info(f"Loaded agent: {loaded_agent.total_steps} episodes of training, best arm: {best_arm}")
+                except Exception as e:
+                    st.error("Failed to load agent")
+
